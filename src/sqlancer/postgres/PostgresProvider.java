@@ -211,6 +211,11 @@ public final class PostgresProvider implements DatabaseProvider<PostgresGlobalSt
                     logger.writeCurrent(createTable.getQueryString());
                 }
                 manager.execute(createTable);
+                // TODO: distribute tables
+                // 80% distributed, 10% local, 10% reference
+                // query that outputs fields (+ filter by primary key if exists)
+                // random pick from any eligible distribution column
+                // sql query to distirbute it + add to log 
                 globalState.setSchema(PostgresSchema.fromConnection(con, databaseName));
             } catch (IgnoreMeException e) {
 
@@ -266,6 +271,13 @@ public final class PostgresProvider implements DatabaseProvider<PostgresGlobalSt
     @Override
     public Connection createDatabase(GlobalState<?> globalState) throws SQLException {
         String url = "jdbc:postgresql://localhost:5432/test";
+        // TODO: make database creation citus-compatible
+        // connect to 9700/postgres (make this optional argument)
+        // get worker nodes from this database
+        // add citus extension to these nodes
+        // after each database added to coordinator node, add those databases to worker nodes as well (from existing database)
+        // switch to new database, add workers to coordinator node
+        // user: sqlancer? hardcode v-naugur for now, make user optional too
         String databaseName = globalState.getDatabaseName();
         Connection con = DriverManager.getConnection(url, globalState.getOptions().getUserName(),
                 globalState.getOptions().getPassword());

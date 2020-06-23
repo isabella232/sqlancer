@@ -348,6 +348,7 @@ public final class Main {
                         state.setRandomly(r);
                         state.setDatabaseName(databaseName);
                         state.setMainOptions(options);
+                        // TODO: option - connection string (default value compatible with citus)
                         Object dmbsSpecificOptions = nameToOptions.get(jc.getParsedCommand());
                         state.setDmbsSpecificOptions(dmbsSpecificOptions);
                         try (Connection con = provider.createDatabase(state)) {
