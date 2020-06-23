@@ -462,6 +462,7 @@ public final class Main {
                 lastNrQueries = currentNrQueries;
                 lastNrDbs = currentNrDbs;
             }
+        // TODO: adjust initial lag to start after database creation
         }, 5, 5, TimeUnit.SECONDS);
     }
 
