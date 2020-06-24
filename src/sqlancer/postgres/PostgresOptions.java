@@ -26,6 +26,15 @@ public class PostgresOptions {
     @Parameter(names = "--oracle", converter = DBMSConverter.class)
     public List<PostgresOracle> oracle = Arrays.asList(PostgresOracle.QUERY_PARTITIONING);
 
+    @Parameter(names = "--port")
+    public int coordinatorPort = 9700;
+
+    @Parameter(names = "--database")
+    public String entryDatabaseName = "postgres";
+
+    @Parameter(names = "--max_parallel_workers_per_gather")
+    public int max_parallel_workers_per_gather = 0;
+
     public enum PostgresOracle {
         NOREC {
             @Override
@@ -63,3 +72,4 @@ public class PostgresOptions {
     }
 
 }
+                     
