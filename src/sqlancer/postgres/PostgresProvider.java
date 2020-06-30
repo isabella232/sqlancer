@@ -12,7 +12,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.HashMap;
-import java.util.HashSet;
 
 import sqlancer.AbstractAction;
 import sqlancer.CompositeTestOracle;
@@ -223,11 +222,13 @@ public final class PostgresProvider implements DatabaseProvider<PostgresGlobalSt
             QueryAdapter query = new QueryAdapter("SELECT create_distributed_table('" + tableName + "', '" + columnToDistribute.getName() + "');");
             globalState.getState().statements.add(query);
             String template = "SELECT create_distributed_table(?, ?);";
-            List<String> fills = new ArrayList<>();
-            fills.add(tableName);
-            fills.add(columnToDistribute.getName());
+            List<String> fills = Arrays.asList(tableName, columnToDistribute.getName());
             query.fillAndExecute(con, template, fills);
-            // TODO: check sql injection
+            // distribution column cannot take NULL value
+            // TODO: find a way to protect from SQL injection without '' around string input
+            query = new QueryAdapter("ALTER TABLE " + tableName + " ALTER COLUMN " + columnToDistribute.getName() + " SET NOT NULL;");
+            globalState.getState().statements.add(query);
+            query.execute(con);
         }
     }
 
@@ -255,14 +256,16 @@ public final class PostgresProvider implements DatabaseProvider<PostgresGlobalSt
             // TODO: decide whether to log
             // globalState.getState().statements.add(query);
             String template = "SELECT column_name, data_type FROM information_schema.columns WHERE table_name = ?;";
-            List<String> fills = new ArrayList<>();
-            fills.add(tableName);
+            List<String> fills = Arrays.asList(tableName);
             ResultSet rs = query.fillAndExecuteAndGet(con, template, fills);
             while (rs.next()) {
                 String columnName = rs.getString("column_name");
                 String dataType = rs.getString("data_type");
-                PostgresColumn c = new PostgresColumn(columnName, getColumnType(dataType));
-                columns.add(c);
+                // data types money & bit varying have no default operator class for specified partition method
+                if (! (dataType.equals("money") || dataType.equals("bit varying"))) {
+                    PostgresColumn c = new PostgresColumn(columnName, getColumnType(dataType));
+                    columns.add(c);
+                }
             }
         } else {
             // TODO: multiple constraints?
@@ -271,21 +274,21 @@ public final class PostgresProvider implements DatabaseProvider<PostgresGlobalSt
             // TODO: decide whether to log
             // globalState.getState().statements.add(query);
             String template = "SELECT c.column_name, c.data_type, tc.constraint_type FROM information_schema.table_constraints tc JOIN information_schema.constraint_column_usage AS ccu USING (constraint_schema, constraint_name) JOIN information_schema.columns AS c ON c.table_schema = tc.constraint_schema AND tc.table_name = c.table_name AND ccu.column_name = c.column_name WHERE (constraint_type = 'PRIMARY KEY' OR constraint_type = 'UNIQUE' OR constraint_type = 'EXCLUDE') AND c.table_name = ?;";
-            List<String> fills = new ArrayList<>();
-            fills.add(tableName);
+            List<String> fills = Arrays.asList(tableName);
             ResultSet rs = query.fillAndExecuteAndGet(con, template, fills);
             while (rs.next()) {
                 String columnName = rs.getString("column_name");
                 String dataType = rs.getString("data_type");
                 String constraintType = rs.getString("constraint_type");
-                PostgresColumn c = new PostgresColumn(columnName, getColumnType(dataType));
-                if (columnConstraints.containsKey(c)) {
-                    columnConstraints.get(c).add(constraintType);
-                } else {
-                    List<String> cc = new ArrayList<>();
-                    cc.add(constraintType);
-                    columnConstraints.put(c, cc);
-                }
+                // data types money & bit varying have no default operator class for specified partition method
+                if (! (dataType.equals("money") || dataType.equals("bit varying"))) {
+                    PostgresColumn c = new PostgresColumn(columnName, getColumnType(dataType));
+                    if (columnConstraints.containsKey(c)) {
+                        columnConstraints.get(c).add(constraintType);
+                    } else {
+                        columnConstraints.put(c, Arrays.asList(constraintType));
+                    }
+                }  
             }
             for (PostgresColumn c : columnConstraints.keySet()) {
                 // TODO: check if table and column constraint sets are equal? but then it's O(N) instead of O(1)
@@ -311,24 +314,14 @@ public final class PostgresProvider implements DatabaseProvider<PostgresGlobalSt
         }
         globalState.setSchema(PostgresSchema.fromConnection(con, databaseName));
 
-        HashSet<String> volatileFunctions = new HashSet<>();
-        HashSet<String> stableFunctions = new HashSet<>();
-        HashSet<String> immutableFunctions = new HashSet<>();
         QueryAdapter query = new QueryAdapter("SELECT proname, provolatile FROM pg_proc;");
         globalState.getState().statements.add(query);
         ResultSet rs = query.executeAndGet(con);
         while (rs.next()) {
             String functionName = rs.getString("proname");
-            String functionVolatility = rs.getString("provolatile");
-            if (functionVolatility.equals("v")) {
-                volatileFunctions.add(functionName);
-            } else if (functionVolatility.equals("s")) {
-                stableFunctions.add(functionName);
-            } else {
-                immutableFunctions.add(functionName);
-            }
+            Character functionType = rs.getString("provolatile").charAt(0);
+            globalState.addFunctionAndType(functionName, functionType);
         }
-        globalState.setVolatilities(volatileFunctions, stableFunctions, immutableFunctions);
 
         while (globalState.getSchema().getDatabaseTables().size() < 1) {
             try {
@@ -354,8 +347,7 @@ public final class PostgresProvider implements DatabaseProvider<PostgresGlobalSt
                 query = new QueryAdapter("SELECT create_reference_table('" + table.getName() + "');");
                 globalState.getState().statements.add(query);
                 String template = "SELECT create_reference_table(?);";
-                List<String> fills = new ArrayList<>();
-                fills.add(table.getName());
+                List<String> fills = Arrays.asList(table.getName());
                 query.fillAndExecute(con, template, fills);
             } else {
                 // create distributed table

@@ -5,8 +5,9 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
-import java.util.HashSet;
+import java.util.HashMap;
 
 import sqlancer.GlobalState;
 import sqlancer.Randomly;
@@ -17,12 +18,8 @@ public class PostgresGlobalState extends GlobalState<PostgresOptions> {
     private List<String> collates;
     private List<String> opClasses;
     private PostgresSchema schema;
-    private HashSet<String> volatileFunctions;
-    private HashSet<String> stableFunctions;
-    private HashSet<String> immutableFunctions;
-    private boolean allowVolatileFunction = true;
-    private boolean allowStableFunction = true;
-    private boolean allowImmutableFunction = true;
+    private HashMap<String, Character> functionsAndTypes = new HashMap<>();;
+    private List<Character> allowedFunctionTypes = Arrays.asList('s', 'v', 'i');
 
     @Override
     public void setConnection(Connection con) {
@@ -105,46 +102,24 @@ public class PostgresGlobalState extends GlobalState<PostgresOptions> {
         return Randomly.fromList(opClasses);
     }
 
-    public void setVolatilities(HashSet<String> volatileFunctions, HashSet<String> stableFunctions, HashSet<String> immutableFunctions) {
-        this.volatileFunctions = volatileFunctions;
-        this.stableFunctions = stableFunctions;
-        this.immutableFunctions = immutableFunctions;
+    public void addFunctionAndType(String functionName, Character functionType) {
+        this.functionsAndTypes.put(functionName, functionType);
     }
 
-    public HashSet<String> getVolatileFunctions() {
-        return this.volatileFunctions;
+    public HashMap<String, Character> getFunctionsAndTypes() {
+        return this.functionsAndTypes;
     }
 
-    public HashSet<String> getStableFunctions() {
-        return this.stableFunctions;
+    public void setAllowedFunctionTypes(List<Character> types) {
+        this.allowedFunctionTypes = types;
     }
 
-    public HashSet<String> getImmutableFunctions() {
-        return this.immutableFunctions;
+    public void setDefaultAllowedFunctionTypes() {
+        this.allowedFunctionTypes = Arrays.asList('s', 'v', 'i');
     }
 
-    public void setAllowVolatileFunction(boolean permission) {
-        this.allowVolatileFunction = permission;
-    }
-
-    public boolean getAllowVolatileFunction() {
-        return this.allowVolatileFunction;
-    }
-
-    public void setAllowStableFunction(boolean permission) {
-        this.allowStableFunction = permission;
-    }
-
-    public boolean getAllowStableFunction() {
-        return this.allowStableFunction;
-    }
-
-    public void setAllowImmutableFunction(boolean permission) {
-        this.allowImmutableFunction = permission;
-    }
-
-    public boolean getAllowImmutableFunction() {
-        return this.allowImmutableFunction;
+    public List<Character> getAllowedFunctionTypes() {
+        return this.allowedFunctionTypes;
     }
 
 }
