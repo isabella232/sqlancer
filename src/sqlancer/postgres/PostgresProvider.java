@@ -60,9 +60,13 @@ import static sqlancer.postgres.PostgresSchema.getColumnType;
 // IN
 public final class PostgresProvider extends ProviderAdapter<PostgresGlobalState, PostgresOptions> {
 
-    public static boolean generateOnlyKnown = false;
+    public static boolean generateOnlyKnown;
 
     private PostgresGlobalState globalState;
+
+    public PostgresProvider() {
+        super(PostgresGlobalState.class, PostgresOptions.class);
+    }
 
     public enum Action implements AbstractAction<PostgresGlobalState> {
         ANALYZE(PostgresAnalyzeGenerator::create), //
@@ -403,7 +407,7 @@ public final class PostgresProvider extends ProviderAdapter<PostgresGlobalState,
     }
     
     @Override
-    public Connection createDatabase(GlobalState<?> globalState) throws SQLException {
+    public Connection createDatabase(PostgresGlobalState globalState) throws SQLException {
         // lock database creation process per thread
         synchronized(PostgresProvider.class) {
             String databaseName = globalState.getDatabaseName();
@@ -562,16 +566,6 @@ public final class PostgresProvider extends ProviderAdapter<PostgresGlobalState,
     @Override
     public StateToReproduce getStateToReproduce(String databaseName) {
         return new PostgresStateToReproduce(databaseName);
-    }
-
-    @Override
-    public PostgresGlobalState generateGlobalState() {
-        return new PostgresGlobalState();
-    }
-
-    @Override
-    public PostgresOptions getCommand() {
-        return new PostgresOptions();
     }
 
 }

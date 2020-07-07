@@ -26,7 +26,6 @@ public class PostgresOptions {
     @Parameter(names = "--oracle", converter = DBMSConverter.class)
     public List<PostgresOracle> oracle = Arrays.asList(PostgresOracle.QUERY_PARTITIONING);
 
-<<<<<<< HEAD
     @Parameter(names = "--port")
     public int coordinatorPort = 9700;
 
@@ -35,10 +34,9 @@ public class PostgresOptions {
 
     @Parameter(names = "--max_parallel_workers_per_gather")
     public int max_parallel_workers_per_gather = 0;
-=======
+   
     @Parameter(names = "--test-collations", arity = 1)
     public boolean testCollations = true;
->>>>>>> master
 
     public enum PostgresOracle {
         NOREC {
