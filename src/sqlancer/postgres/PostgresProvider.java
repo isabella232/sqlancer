@@ -60,13 +60,9 @@ import static sqlancer.postgres.PostgresSchema.getColumnType;
 // IN
 public final class PostgresProvider extends ProviderAdapter<PostgresGlobalState, PostgresOptions> {
 
-    public static boolean generateOnlyKnown;
+    public static boolean generateOnlyKnown = false;
 
     private PostgresGlobalState globalState;
-
-    public PostgresProvider() {
-        super(PostgresGlobalState.class, PostgresOptions.class);
-    }
 
     public enum Action implements AbstractAction<PostgresGlobalState> {
         ANALYZE(PostgresAnalyzeGenerator::create), //
@@ -114,10 +110,10 @@ public final class PostgresProvider extends ProviderAdapter<PostgresGlobalState,
         }), //
         RESET_ROLE((g) -> new QueryAdapter("RESET ROLE")), //
         COMMENT_ON(PostgresCommentGenerator::generate), //
-        RESET((g) -> new QueryAdapter("RESET ALL") /*
-                                                    * https://www.postgresql.org/docs/devel/sql-reset.html TODO: also
-                                                    * configuration parameter
-                                                    */), //
+        RESET((g) -> new QueryAdapter(
+                "RESET ALL") /*
+                              * https://www.postgresql.org/docs/devel/sql-reset.html TODO: also configuration parameter
+                              */), //
         NOTIFY(PostgresNotifyGenerator::createNotify), //
         LISTEN((g) -> PostgresNotifyGenerator.createListen()), //
         UNLISTEN((g) -> PostgresNotifyGenerator.createUnlisten()), //
@@ -407,7 +403,6 @@ public final class PostgresProvider extends ProviderAdapter<PostgresGlobalState,
     }
     
     @Override
-<<<<<<< HEAD
     public Connection createDatabase(GlobalState<?> globalState) throws SQLException {
         // lock database creation process per thread
         synchronized(PostgresProvider.class) {
@@ -500,42 +495,13 @@ public final class PostgresProvider extends ProviderAdapter<PostgresGlobalState,
             // new QueryAdapter("set jit_above_cost = 0; set jit_inline_above_cost = 0; set jit_optimize_above_cost =
             // 0;").execute(con);
             return con;
-=======
-    public Connection createDatabase(PostgresGlobalState globalState) throws SQLException {
-        String url = "jdbc:postgresql://localhost:5432/test";
-        String databaseName = globalState.getDatabaseName();
-        Connection con = DriverManager.getConnection(url, globalState.getOptions().getUserName(),
-                globalState.getOptions().getPassword());
-        globalState.getState().statements.add(new QueryAdapter("\\c test;"));
-        globalState.getState().statements.add(new QueryAdapter("DROP DATABASE IF EXISTS " + databaseName));
-        String createDatabaseCommand = getCreateDatabaseCommand(databaseName, con, globalState);
-        globalState.getState().statements.add(new QueryAdapter(createDatabaseCommand));
-        globalState.getState().statements.add(new QueryAdapter("\\c " + databaseName));
-        try (Statement s = con.createStatement()) {
-            s.execute("DROP DATABASE IF EXISTS " + databaseName);
-        }
-        try (Statement s = con.createStatement()) {
-            s.execute(createDatabaseCommand);
-        }
-        con.close();
-        con = DriverManager.getConnection("jdbc:postgresql://localhost:5432/" + databaseName,
-                globalState.getOptions().getUserName(), globalState.getOptions().getPassword());
-        List<String> statements = Arrays.asList(
-                // "CREATE EXTENSION IF NOT EXISTS btree_gin;",
-                // "CREATE EXTENSION IF NOT EXISTS btree_gist;", // TODO: undefined symbol: elog_start
-                "CREATE EXTENSION IF NOT EXISTS pg_prewarm;", "SET max_parallel_workers_per_gather=16");
-        for (String s : statements) {
-            QueryAdapter query = new QueryAdapter(s);
-            globalState.getState().statements.add(query);
-            query.execute(con);
->>>>>>> master
         }
     }
 
-    private String getCreateDatabaseCommand(String databaseName, Connection con, GlobalState<?> state) {
+    private String getCreateDatabaseCommand(String databaseName, Connection con) {
         StringBuilder sb = new StringBuilder();
         sb.append("CREATE DATABASE " + databaseName + " ");
-        if (Randomly.getBoolean() && ((PostgresOptions) state.getDmbsSpecificOptions()).testCollations) {
+        if (Randomly.getBoolean()) {
             if (Randomly.getBoolean()) {
                 sb.append("WITH ENCODING '");
                 sb.append(Randomly.fromOptions("utf8"));
@@ -596,6 +562,16 @@ public final class PostgresProvider extends ProviderAdapter<PostgresGlobalState,
     @Override
     public StateToReproduce getStateToReproduce(String databaseName) {
         return new PostgresStateToReproduce(databaseName);
+    }
+
+    @Override
+    public PostgresGlobalState generateGlobalState() {
+        return new PostgresGlobalState();
+    }
+
+    @Override
+    public PostgresOptions getCommand() {
+        return new PostgresOptions();
     }
 
 }

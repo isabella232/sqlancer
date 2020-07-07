@@ -207,14 +207,9 @@ public class PostgresSchema {
         }
 
         private final TableType tableType;
-<<<<<<< HEAD
-        private List<PostgresStatisticsObject> statistics;
-        private boolean isInsertable;
         private PostgresColumn distributionColumn = null;
-=======
         private final List<PostgresStatisticsObject> statistics;
         private final boolean isInsertable;
->>>>>>> master
 
         public PostgresTable(String tableName, List<PostgresColumn> columns, List<PostgresIndex> indexes,
                 TableType tableType, List<PostgresStatisticsObject> statistics, boolean isView, boolean isInsertable) {
