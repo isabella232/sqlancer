@@ -44,6 +44,8 @@ public class PostgresTLPBase implements TestOracle {
         this.state = state;
         PostgresCommon.addCommonExpressionErrors(errors);
         PostgresCommon.addCommonFetchErrors(errors);
+        // for queries not supported by Citus
+        PostgresCommon.addCitusErrors(errors);
     }
 
     @Override

@@ -42,6 +42,8 @@ public class PostgresTLPAggregateOracle extends PostgresTLPBase implements TestO
 
     @Override
     public void check() throws SQLException {
+        // don't use immutable functions in SELECT queries
+        state.setAllowedFunctionTypes(Arrays.asList('i'));
         super.check();
         PostgresAggregateFunction aggregateFunction = Randomly.fromOptions(PostgresAggregateFunction.MAX,
                 PostgresAggregateFunction.MIN, PostgresAggregateFunction.SUM, PostgresAggregateFunction.BIT_AND,
@@ -58,6 +60,7 @@ public class PostgresTLPAggregateOracle extends PostgresTLPBase implements TestO
         if (Randomly.getBooleanWithRatherLowProbability()) {
             select.setOrderByExpressions(gen.generateOrderBy());
         }
+        state.setDefaultAllowedFunctionTypes();
         originalQuery = PostgresVisitor.asString(select);
         firstResult = getAggregateResult(originalQuery);
         metamorphicQuery = createMetamorphicUnionQuery(select, aggregate, select.getFromList());
