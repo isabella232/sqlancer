@@ -1,4 +1,5 @@
 ![Travis](https://travis-ci.com/sqlancer/sqlancer.svg?branch=master)
+[![codecov](https://codecov.io/gh/sqlancer/sqlancer/branch/master/graph/badge.svg)](https://codecov.io/gh/sqlancer/sqlancer)
 [![Twitter](https://img.shields.io/twitter/follow/sqlancer_dbms?style=social)](https://twitter.com/sqlancer_dbms)
 # SQLancer
 
@@ -15,7 +16,7 @@ SQLancer operates in the following two phases:
 # Getting Started
 
 Requirements:
-* Java 11
+* Java 8 or above
 * [Maven](https://maven.apache.org/) (`sudo apt install maven` on Ubuntu)
 * The DBMS that you want to test (SQLite is an embedded DBMS and is included)
 
@@ -24,7 +25,7 @@ The following commands clone SQLancer, create a JAR, and start SQLancer to fuzz 
 ```
 git clone https://github.com/sqlancer/sqlancer
 cd sqlancer
-mvn package
+mvn package -DskipTests
 cd target
 java -jar SQLancer-0.0.1-SNAPSHOT.jar --num-threads 4 sqlite3 --oracle NoREC
 ```

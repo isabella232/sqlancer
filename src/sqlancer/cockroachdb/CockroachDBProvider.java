@@ -12,18 +12,17 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import sqlancer.DatabaseProvider;
 import sqlancer.GlobalState;
 import sqlancer.IgnoreMeException;
 import sqlancer.Main.QueryManager;
 import sqlancer.Main.StateLogger;
 import sqlancer.MainOptions;
+import sqlancer.ProviderAdapter;
 import sqlancer.Query;
 import sqlancer.QueryAdapter;
 import sqlancer.QueryProvider;
 import sqlancer.Randomly;
 import sqlancer.StateToReproduce;
-import sqlancer.StateToReproduce.CockroachDBStateToReproduce;
 import sqlancer.TestOracle;
 import sqlancer.cockroachdb.CockroachDBProvider.CockroachDBGlobalState;
 import sqlancer.cockroachdb.CockroachDBSchema.CockroachDBTable;
@@ -41,7 +40,11 @@ import sqlancer.cockroachdb.gen.CockroachDBTruncateGenerator;
 import sqlancer.cockroachdb.gen.CockroachDBUpdateGenerator;
 import sqlancer.cockroachdb.gen.CockroachDBViewGenerator;
 
-public class CockroachDBProvider implements DatabaseProvider<CockroachDBGlobalState, CockroachDBOptions> {
+public class CockroachDBProvider extends ProviderAdapter<CockroachDBGlobalState, CockroachDBOptions> {
+
+    public CockroachDBProvider() {
+        super(CockroachDBGlobalState.class, CockroachDBOptions.class);
+    }
 
     public enum Action {
         INSERT(CockroachDBInsertGenerator::insert), //
@@ -51,57 +54,55 @@ public class CockroachDBProvider implements DatabaseProvider<CockroachDBGlobalSt
         CREATE_INDEX(CockroachDBIndexGenerator::create), //
         UPDATE(CockroachDBUpdateGenerator::gen), //
         CREATE_VIEW(CockroachDBViewGenerator::generate), //
-        SET_CLUSTER_SETTING(CockroachDBSetClusterSettingGenerator::create), DELETE(
-                CockroachDBDeleteGenerator::delete), COMMENT_ON(CockroachDBCommentOnGenerator::comment), SHOW(
-                        CockroachDBShowGenerator::show), TRANSACTION((g) -> {
-                            String s = Randomly.fromOptions("BEGIN", "ROLLBACK", "COMMIT");
-                            return new QueryAdapter(s, Arrays.asList("there is no transaction in progress",
-                                    "there is already a transaction in progress", "current transaction is aborted",
-                                    "does not exist" /* interleaved indexes */));
-                        }), EXPLAIN((g) -> {
-                            StringBuilder sb = new StringBuilder("EXPLAIN ");
-                            Set<String> errors = new HashSet<>();
-                            if (Randomly.getBoolean()) {
-                                sb.append("(");
-                                sb.append(Randomly.nonEmptySubset("VERBOSE", "TYPES", "OPT", "DISTSQL", "VEC").stream()
-                                        .collect(Collectors.joining(", ")));
-                                sb.append(") ");
-                                errors.add("cannot set EXPLAIN mode more than once");
-                                errors.add("unable to vectorize execution plan");
-                                errors.add("unsupported type");
-                                errors.add("vectorize is set to 'off'");
-                            }
-                            sb.append(CockroachDBRandomQuerySynthesizer.generate(g, Randomly.smallNumber() + 1));
-                            CockroachDBErrors.addExpressionErrors(errors);
-                            return new QueryAdapter(sb.toString(), errors);
-                        }), SCRUB((g) -> new QueryAdapter(
-                                "EXPERIMENTAL SCRUB table " + g.getSchema().getRandomTable(t -> !t.isView()).getName(),
-                                // https://github.com/cockroachdb/cockroach/issues/46401
-                                Arrays.asList("scrub-fk: column \"t.rowid\" does not exist",
-                                        "check-constraint: cannot access temporary tables of other sessions" /*
-                                                                                                              * https://
-                                                                                                              * github.
-                                                                                                              * com/
-                                                                                                              * cockroachdb
-                                                                                                              * /
-                                                                                                              * cockroach
-                                                                                                              * /issues/
-                                                                                                              * 47031
-                                                                                                              */))), SPLIT(
-                                                (g) -> {
-                                                    StringBuilder sb = new StringBuilder("ALTER INDEX ");
-                                                    CockroachDBTable randomTable = g.getSchema().getRandomTable();
-                                                    sb.append(randomTable.getName());
-                                                    sb.append("@");
-                                                    sb.append(randomTable.getRandomIndex());
-                                                    if (Randomly.getBoolean()) {
-                                                        sb.append(" SPLIT AT VALUES (true), (false);");
-                                                    } else {
-                                                        sb.append(" SPLIT AT VALUES (NULL);");
-                                                    }
-                                                    return new QueryAdapter(sb.toString(),
-                                                            Arrays.asList("must be of type"));
-                                                });
+        SET_CLUSTER_SETTING(CockroachDBSetClusterSettingGenerator::create), //
+        DELETE(CockroachDBDeleteGenerator::delete), //
+        COMMENT_ON(CockroachDBCommentOnGenerator::comment), //
+        SHOW(CockroachDBShowGenerator::show), //
+        TRANSACTION((g) -> {
+            String s = Randomly.fromOptions("BEGIN", "ROLLBACK", "COMMIT");
+            return new QueryAdapter(s,
+                    Arrays.asList("there is no transaction in progress", "there is already a transaction in progress",
+                            "current transaction is aborted", "does not exist" /* interleaved indexes */));
+        }), //
+        EXPLAIN((g) -> {
+            StringBuilder sb = new StringBuilder("EXPLAIN ");
+            Set<String> errors = new HashSet<>();
+            if (Randomly.getBoolean()) {
+                sb.append("(");
+                sb.append(Randomly.nonEmptySubset("VERBOSE", "TYPES", "OPT", "DISTSQL", "VEC").stream()
+                        .collect(Collectors.joining(", ")));
+                sb.append(") ");
+                errors.add("cannot set EXPLAIN mode more than once");
+                errors.add("unable to vectorize execution plan");
+                errors.add("unsupported type");
+                errors.add("vectorize is set to 'off'");
+            }
+            sb.append(CockroachDBRandomQuerySynthesizer.generate(g, Randomly.smallNumber() + 1));
+            CockroachDBErrors.addExpressionErrors(errors);
+            return new QueryAdapter(sb.toString(), errors);
+        }), //
+        SCRUB((g) -> new QueryAdapter(
+                "EXPERIMENTAL SCRUB table " + g.getSchema().getRandomTable(t -> !t.isView()).getName(),
+                // https://github.com/cockroachdb/cockroach/issues/46401
+                Arrays.asList("scrub-fk: column \"t.rowid\" does not exist",
+                        "check-constraint: cannot access temporary tables of other sessions" /*
+                                                                                              * https:// github. com/
+                                                                                              * cockroachdb / cockroach
+                                                                                              * /issues/ 47031
+                                                                                              */))), //
+        SPLIT((g) -> {
+            StringBuilder sb = new StringBuilder("ALTER INDEX ");
+            CockroachDBTable randomTable = g.getSchema().getRandomTable();
+            sb.append(randomTable.getName());
+            sb.append("@");
+            sb.append(randomTable.getRandomIndex());
+            if (Randomly.getBoolean()) {
+                sb.append(" SPLIT AT VALUES (true), (false);");
+            } else {
+                sb.append(" SPLIT AT VALUES (NULL);");
+            }
+            return new QueryAdapter(sb.toString(), Arrays.asList("must be of type"));
+        });
 
         private final QueryProvider<CockroachDBGlobalState> queryProvider;
 
@@ -299,7 +300,7 @@ public class CockroachDBProvider implements DatabaseProvider<CockroachDBGlobalSt
     }
 
     @Override
-    public Connection createDatabase(GlobalState<?> globalState) throws SQLException {
+    public Connection createDatabase(CockroachDBGlobalState globalState) throws SQLException {
         String databaseName = globalState.getDatabaseName();
         String url = "jdbc:postgresql://localhost:26257/test";
         Connection con = DriverManager.getConnection(url, globalState.getOptions().getUserName(),
@@ -326,18 +327,4 @@ public class CockroachDBProvider implements DatabaseProvider<CockroachDBGlobalSt
         return "cockroachdb";
     }
 
-    @Override
-    public StateToReproduce getStateToReproduce(String databaseName) {
-        return new CockroachDBStateToReproduce(databaseName);
-    }
-
-    @Override
-    public CockroachDBGlobalState generateGlobalState() {
-        return new CockroachDBGlobalState();
-    }
-
-    @Override
-    public CockroachDBOptions getCommand() {
-        return new CockroachDBOptions();
-    }
 }

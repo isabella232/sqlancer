@@ -11,7 +11,7 @@ import java.util.List;
 import sqlancer.IgnoreMeException;
 import sqlancer.QueryAdapter;
 import sqlancer.Randomly;
-import sqlancer.StateToReproduce.MariaDBStateToReproduce;
+import sqlancer.StateToReproduce;
 import sqlancer.mariadb.MariaDBSchema;
 import sqlancer.mariadb.MariaDBSchema.MariaDBColumn;
 import sqlancer.mariadb.MariaDBSchema.MariaDBDataType;
@@ -30,16 +30,16 @@ import sqlancer.mariadb.gen.MariaDBExpressionGenerator;
 
 public class MariaDBNoRECOracle {
 
-    private MariaDBSchema s;
-    private Randomly r;
-    private Connection con;
-    private MariaDBStateToReproduce state;
+    private final MariaDBSchema s;
+    private final Randomly r;
+    private final Connection con;
     private String firstQueryString;
     private String secondQueryString;
     private final List<String> errors = new ArrayList<>();
     private static final int NOT_FOUND = -1;
+    private final StateToReproduce state;
 
-    public MariaDBNoRECOracle(MariaDBSchema s, Randomly r, Connection con, MariaDBStateToReproduce state) {
+    public MariaDBNoRECOracle(MariaDBSchema s, Randomly r, Connection con, StateToReproduce state) {
         this.s = s;
         this.r = r;
         this.con = con;

@@ -12,17 +12,16 @@ import java.util.stream.Collectors;
 
 import sqlancer.AbstractAction;
 import sqlancer.CompositeTestOracle;
-import sqlancer.DatabaseProvider;
 import sqlancer.GlobalState;
 import sqlancer.IgnoreMeException;
 import sqlancer.Main.QueryManager;
 import sqlancer.Main.StateLogger;
+import sqlancer.ProviderAdapter;
 import sqlancer.Query;
 import sqlancer.QueryAdapter;
 import sqlancer.QueryProvider;
 import sqlancer.Randomly;
 import sqlancer.StateToReproduce;
-import sqlancer.StateToReproduce.MySQLStateToReproduce;
 import sqlancer.StatementExecutor;
 import sqlancer.TestOracle;
 import sqlancer.tidb.TiDBProvider.TiDBGlobalState;
@@ -37,34 +36,32 @@ import sqlancer.tidb.gen.TiDBTableGenerator;
 import sqlancer.tidb.gen.TiDBUpdateGenerator;
 import sqlancer.tidb.gen.TiDBViewGenerator;
 
-public class TiDBProvider implements DatabaseProvider<TiDBGlobalState, TiDBOptions> {
+public class TiDBProvider extends ProviderAdapter<TiDBGlobalState, TiDBOptions> {
+
+    public TiDBProvider() {
+        super(TiDBGlobalState.class, TiDBOptions.class);
+    }
 
     public enum Action implements AbstractAction<TiDBGlobalState> {
         INSERT(TiDBInsertGenerator::getQuery), //
-        ANALYZE_TABLE(TiDBAnalyzeTableGenerator::getQuery), TRUNCATE((g) -> new QueryAdapter(
-                "TRUNCATE " + g.getSchema().getRandomTable(t -> !t.isView()).getName())), CREATE_INDEX(
-                        TiDBIndexGenerator::getQuery), DELETE(TiDBDeleteGenerator::getQuery), SET(
-                                TiDBSetGenerator::getQuery), UPDATE(
-                                        TiDBUpdateGenerator::getQuery), ADMIN_CHECKSUM_TABLE(
-                                                (g) -> new QueryAdapter("ADMIN CHECKSUM TABLE "
-                                                        + g.getSchema().getRandomTable().getName())), VIEW_GENERATOR(
-                                                                TiDBViewGenerator::getQuery), ALTER_TABLE(
-                                                                        TiDBAlterTableGenerator::getQuery), EXPLAIN(
-                                                                                (g) -> {
-                                                                                    Set<String> errors = new HashSet<>();
-                                                                                    TiDBErrors.addExpressionErrors(
-                                                                                            errors);
-                                                                                    TiDBErrors
-                                                                                            .addExpressionHavingErrors(
-                                                                                                    errors);
-                                                                                    return new QueryAdapter("EXPLAIN "
-                                                                                            + TiDBRandomQuerySynthesizer
-                                                                                                    .generate(g,
-                                                                                                            Randomly.smallNumber()
-                                                                                                                    + 1)
-                                                                                                    .getQueryString(),
-                                                                                            errors);
-                                                                                });
+        ANALYZE_TABLE(TiDBAnalyzeTableGenerator::getQuery), //
+        TRUNCATE((g) -> new QueryAdapter("TRUNCATE " + g.getSchema().getRandomTable(t -> !t.isView()).getName())), //
+        CREATE_INDEX(TiDBIndexGenerator::getQuery), //
+        DELETE(TiDBDeleteGenerator::getQuery), //
+        SET(TiDBSetGenerator::getQuery), //
+        UPDATE(TiDBUpdateGenerator::getQuery), //
+        ADMIN_CHECKSUM_TABLE(
+                (g) -> new QueryAdapter("ADMIN CHECKSUM TABLE " + g.getSchema().getRandomTable().getName())), //
+        VIEW_GENERATOR(TiDBViewGenerator::getQuery), //
+        ALTER_TABLE(TiDBAlterTableGenerator::getQuery), //
+        EXPLAIN((g) -> {
+            Set<String> errors = new HashSet<>();
+            TiDBErrors.addExpressionErrors(errors);
+            TiDBErrors.addExpressionHavingErrors(errors);
+            return new QueryAdapter(
+                    "EXPLAIN " + TiDBRandomQuerySynthesizer.generate(g, Randomly.smallNumber() + 1).getQueryString(),
+                    errors);
+        });
 
         private final QueryProvider<TiDBGlobalState> queryProvider;
 
@@ -120,11 +117,6 @@ public class TiDBProvider implements DatabaseProvider<TiDBGlobalState, TiDBOptio
     }
 
     @Override
-    public TiDBGlobalState generateGlobalState() {
-        return new TiDBGlobalState();
-    }
-
-    @Override
     public void generateAndTestDatabase(TiDBGlobalState globalState) throws SQLException {
         QueryManager manager = globalState.getManager();
         Connection con = globalState.getConnection();
@@ -156,7 +148,8 @@ public class TiDBProvider implements DatabaseProvider<TiDBGlobalState, TiDBOptio
                         try {
                             globalState.setSchema(TiDBSchema.fromConnection(con, databaseName));
                         } catch (SQLException e) {
-                            if (q.getQueryString().contains("CREATE VIEW")) {
+                            if (q.getQueryString().contains("CREATE VIEW") || e.getMessage().contains(
+                                    "references invalid table(s) or column(s) or function(s) or definer/invoker of view lack rights to use them")) {
                                 throw new IgnoreMeException(); // TODO: drop view instead
                             } else {
                                 throw new AssertionError(e);
@@ -199,9 +192,9 @@ public class TiDBProvider implements DatabaseProvider<TiDBGlobalState, TiDBOptio
     }
 
     @Override
-    public Connection createDatabase(GlobalState<?> globalState) throws SQLException {
+    public Connection createDatabase(TiDBGlobalState globalState) throws SQLException {
         String databaseName = globalState.getDatabaseName();
-        String url = "jdbc:mysql://127.0.0.1:4001/";
+        String url = "jdbc:mysql://127.0.0.1:4000/";
         Connection con = DriverManager.getConnection(url, globalState.getOptions().getUserName(),
                 globalState.getOptions().getPassword());
         globalState.getState().statements.add(new QueryAdapter("USE test"));
@@ -216,7 +209,7 @@ public class TiDBProvider implements DatabaseProvider<TiDBGlobalState, TiDBOptio
             s.execute(createDatabaseCommand);
         }
         con.close();
-        con = DriverManager.getConnection("jdbc:mysql://127.0.0.1:4001/" + databaseName,
+        con = DriverManager.getConnection("jdbc:mysql://127.0.0.1:4000/" + databaseName,
                 globalState.getOptions().getUserName(), globalState.getOptions().getPassword());
         return con;
     }
@@ -224,16 +217,6 @@ public class TiDBProvider implements DatabaseProvider<TiDBGlobalState, TiDBOptio
     @Override
     public String getDBMSName() {
         return "tidb";
-    }
-
-    @Override
-    public StateToReproduce getStateToReproduce(String databaseName) {
-        return new MySQLStateToReproduce(databaseName);
-    }
-
-    @Override
-    public TiDBOptions getCommand() {
-        return new TiDBOptions();
     }
 
 }

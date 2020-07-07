@@ -4,6 +4,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+import sqlancer.clickhouse.ClickHouseSchema;
+import sqlancer.clickhouse.ast.ClickHouseConstant;
+import sqlancer.clickhouse.ast.ClickHouseExpression;
 import sqlancer.mysql.MySQLSchema.MySQLColumn;
 import sqlancer.mysql.ast.MySQLConstant;
 import sqlancer.mysql.ast.MySQLExpression;
@@ -19,9 +22,11 @@ public class StateToReproduce {
     public final List<Query> statements = new ArrayList<>();
     public String queryString;
 
-    private String databaseName;
+    private final String databaseName;
 
     public String databaseVersion;
+
+    protected long seedValue;
 
     public String values;
 
@@ -33,7 +38,6 @@ public class StateToReproduce {
 
     public StateToReproduce(String databaseName) {
         this.databaseName = databaseName;
-
     }
 
     public String getException() {
@@ -56,6 +60,10 @@ public class StateToReproduce {
         return queryString;
     }
 
+    public long getSeedValue() {
+        return seedValue;
+    }
+
     public static class MySQLStateToReproduce extends StateToReproduce {
 
         public Map<MySQLColumn, MySQLConstant> randomRowValues;
@@ -74,22 +82,6 @@ public class StateToReproduce {
 
         public MySQLExpression getWhereClause() {
             return whereClause;
-        }
-
-    }
-
-    public static class MariaDBStateToReproduce extends StateToReproduce {
-
-        public MariaDBStateToReproduce(String databaseName) {
-            super(databaseName);
-        }
-
-    }
-
-    public static class CockroachDBStateToReproduce extends StateToReproduce {
-
-        public CockroachDBStateToReproduce(String databaseName) {
-            super(databaseName);
         }
 
     }
@@ -130,6 +122,28 @@ public class StateToReproduce {
         }
 
         public PostgresExpression getWhereClause() {
+            return whereClause;
+        }
+
+    }
+
+    public static class ClickHouseStateToReproduce extends StateToReproduce {
+
+        public Map<ClickHouseSchema.ClickHouseColumn, ClickHouseConstant> randomRowValues;
+
+        public ClickHouseExpression whereClause;
+
+        public String queryThatSelectsRow;
+
+        public ClickHouseStateToReproduce(String databaseName) {
+            super(databaseName);
+        }
+
+        public Map<ClickHouseSchema.ClickHouseColumn, ClickHouseConstant> getRandomRowValues() {
+            return randomRowValues;
+        }
+
+        public ClickHouseExpression getWhereClause() {
             return whereClause;
         }
 

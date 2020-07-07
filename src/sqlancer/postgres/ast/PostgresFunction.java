@@ -37,7 +37,7 @@ public class PostgresFunction implements PostgresExpression {
         ABS(1, "abs") {
 
             @Override
-            public PostgresConstant apply(PostgresConstant[] evaluatedArgs, PostgresExpression[] args) {
+            public PostgresConstant apply(PostgresConstant[] evaluatedArgs, PostgresExpression... args) {
                 if (evaluatedArgs[0].isNull()) {
                     return PostgresConstant.createNullConstant();
                 } else {
@@ -60,7 +60,7 @@ public class PostgresFunction implements PostgresExpression {
         LOWER(1, "lower") {
 
             @Override
-            public PostgresConstant apply(PostgresConstant[] evaluatedArgs, PostgresExpression[] args) {
+            public PostgresConstant apply(PostgresConstant[] evaluatedArgs, PostgresExpression... args) {
                 if (evaluatedArgs[0].isNull()) {
                     return PostgresConstant.createNullConstant();
                 } else {
@@ -82,7 +82,7 @@ public class PostgresFunction implements PostgresExpression {
         },
         LENGTH(1, "length") {
             @Override
-            public PostgresConstant apply(PostgresConstant[] evaluatedArgs, PostgresExpression[] args) {
+            public PostgresConstant apply(PostgresConstant[] evaluatedArgs, PostgresExpression... args) {
                 if (evaluatedArgs[0].isNull()) {
                     return PostgresConstant.createNullConstant();
                 }
@@ -103,7 +103,7 @@ public class PostgresFunction implements PostgresExpression {
         UPPER(1, "upper") {
 
             @Override
-            public PostgresConstant apply(PostgresConstant[] evaluatedArgs, PostgresExpression[] args) {
+            public PostgresConstant apply(PostgresConstant[] evaluatedArgs, PostgresExpression... args) {
                 if (evaluatedArgs[0].isNull()) {
                     return PostgresConstant.createNullConstant();
                 } else {
@@ -159,7 +159,7 @@ public class PostgresFunction implements PostgresExpression {
         // },
         NUM_NONNULLS(1, "num_nonnulls") {
             @Override
-            public PostgresConstant apply(PostgresConstant[] args, PostgresExpression[] origArgs) {
+            public PostgresConstant apply(PostgresConstant[] args, PostgresExpression... origArgs) {
                 int nr = 0;
                 for (PostgresConstant c : args) {
                     if (!c.isNull()) {
@@ -187,7 +187,7 @@ public class PostgresFunction implements PostgresExpression {
         },
         NUM_NULLS(1, "num_nulls") {
             @Override
-            public PostgresConstant apply(PostgresConstant[] args, PostgresExpression[] origArgs) {
+            public PostgresConstant apply(PostgresConstant[] args, PostgresExpression... origArgs) {
                 int nr = 0;
                 for (PostgresConstant c : args) {
                     if (c.isNull()) {

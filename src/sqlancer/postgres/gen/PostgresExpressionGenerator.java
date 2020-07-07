@@ -54,7 +54,7 @@ public class PostgresExpressionGenerator {
 
     private final int maxDepth;
 
-    private Randomly r;
+    private final Randomly r;
 
     private List<PostgresColumn> columns;
 
@@ -75,6 +75,7 @@ public class PostgresExpressionGenerator {
         this.maxDepth = globalState.getOptions().getMaxExpressionDepth();
         this.functionsAndTypes = globalState.getFunctionsAndTypes();
         this.allowedFunctionTypes = globalState.getAllowedFunctionTypes();
+        this.globalState = globalState;
     }
 
     public PostgresExpressionGenerator setColumns(List<PostgresColumn> columns) {
@@ -110,7 +111,8 @@ public class PostgresExpressionGenerator {
     }
 
     private enum BooleanExpression {
-        POSTFIX_OPERATOR, NOT, BINARY_LOGICAL_OPERATOR, BINARY_COMPARISON, FUNCTION, CAST, LIKE, BETWEEN, IN_OPERATION, SIMILAR_TO, POSIX_REGEX, BINARY_RANGE_COMPARISON;
+        POSTFIX_OPERATOR, NOT, BINARY_LOGICAL_OPERATOR, BINARY_COMPARISON, FUNCTION, CAST, LIKE, BETWEEN, IN_OPERATION,
+        SIMILAR_TO, POSIX_REGEX, BINARY_RANGE_COMPARISON;
     }
 
     private PostgresExpression generateFunctionWithUnknownResult(int depth, PostgresDataType type) {
@@ -256,7 +258,8 @@ public class PostgresExpressionGenerator {
         return new PostgresExpressionGenerator(globalState).generateExpression(0, type);
     }
 
-    public PostgresExpression generateExpression(int depth, PostgresDataType dataType) {
+    public PostgresExpression generateExpression(int depth, PostgresDataType originalType) {
+        PostgresDataType dataType = originalType;
         if (dataType == PostgresDataType.REAL && Randomly.getBoolean()) {
             dataType = Randomly.fromOptions(PostgresDataType.INT, PostgresDataType.FLOAT);
         }
@@ -363,6 +366,9 @@ public class PostgresExpressionGenerator {
         TextExpression option;
         List<TextExpression> validOptions = new ArrayList<>(Arrays.asList(TextExpression.values()));
         if (expectedResult) {
+            validOptions.remove(TextExpression.COLLATE);
+        }
+        if (!globalState.getDmbsSpecificOptions().testCollations) {
             validOptions.remove(TextExpression.COLLATE);
         }
         option = Randomly.fromList(validOptions);

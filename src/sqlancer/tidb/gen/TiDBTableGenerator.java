@@ -28,6 +28,7 @@ public class TiDBTableGenerator {
     private final Set<String> errors = new HashSet<>();
 
     public Query getQuery(TiDBGlobalState globalState) throws SQLException {
+        errors.add("Information schema is changed during the execution of the statement");
         String tableName = globalState.getSchema().getFreeTableName();
         int nrColumns = Randomly.smallNumber() + 1;
         allowPrimaryKey = Randomly.getBoolean();
@@ -170,21 +171,6 @@ public class TiDBTableGenerator {
             throw new IgnoreMeException();
         }
         sb.append(type.toString());
-        // if (type == TiDBDataType.INT) {
-        // sb.append(Randomly.fromOptions("TINYINT", "SMALLINT", "MEDIUMINT", "INT", "BIGINT"));
-        // return;
-        // }
-        // sb.append(type);
-        // switch (type) {
-        // case NUMERIC:
-        // case FLOAT:
-        // case DOUBLE:
-        // case DECIMAL:
-        // if (Randomly.getBoolean()) {
-        // MySQLTableGenerator.optionallyAddPrecisionAndScale(sb);
-        // }
-        // break;
-        // }
         appendSpecifiers(sb, type.getPrimitiveDataType());
         appendSizeSpecifiers(sb, type.getPrimitiveDataType());
     }

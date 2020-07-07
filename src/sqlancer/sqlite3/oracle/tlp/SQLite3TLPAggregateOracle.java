@@ -6,7 +6,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-import sqlancer.DatabaseProvider;
+import sqlancer.ComparatorHelper;
 import sqlancer.IgnoreMeException;
 import sqlancer.QueryAdapter;
 import sqlancer.Randomly;
@@ -30,7 +30,7 @@ import sqlancer.sqlite3.schema.SQLite3Schema.SQLite3Tables;
 
 public class SQLite3TLPAggregateOracle implements TestOracle {
 
-    private SQLite3GlobalState state;
+    private final SQLite3GlobalState state;
     private final List<String> errors = new ArrayList<>();
     private SQLite3ExpressionGenerator gen;
 
@@ -97,12 +97,11 @@ public class SQLite3TLPAggregateOracle implements TestOracle {
         }
         state.getState().queryString = "--" + originalQuery + "\n--" + metamorphicText + "\n-- " + firstResult + "\n-- "
                 + secondResult;
-        if (firstResult == null && secondResult != null
-                || firstResult != null && !firstResult.contentEquals(secondResult)) {
+        if ((firstResult == null && secondResult != null
+                || firstResult != null && !firstResult.contentEquals(secondResult))
+                && !ComparatorHelper.isEqualDouble(firstResult, secondResult)) {
 
-            if (!DatabaseProvider.isEqualDouble(firstResult, secondResult)) {
-                throw new AssertionError();
-            }
+            throw new AssertionError();
 
         }
 

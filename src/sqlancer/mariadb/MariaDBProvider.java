@@ -7,17 +7,17 @@ import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 
-import sqlancer.DatabaseProvider;
 import sqlancer.GlobalState;
 import sqlancer.IgnoreMeException;
 import sqlancer.Main.QueryManager;
 import sqlancer.Main.StateLogger;
 import sqlancer.MainOptions;
+import sqlancer.ProviderAdapter;
 import sqlancer.Query;
 import sqlancer.QueryAdapter;
 import sqlancer.Randomly;
 import sqlancer.StateToReproduce;
-import sqlancer.StateToReproduce.MariaDBStateToReproduce;
+import sqlancer.mariadb.MariaDBProvider.MariaDBGlobalState;
 import sqlancer.mariadb.gen.MariaDBIndexGenerator;
 import sqlancer.mariadb.gen.MariaDBInsertGenerator;
 import sqlancer.mariadb.gen.MariaDBSetGenerator;
@@ -28,11 +28,15 @@ import sqlancer.mariadb.gen.MariaDBUpdateGenerator;
 import sqlancer.mariadb.oracle.MariaDBNoRECOracle;
 import sqlancer.sqlite3.gen.SQLite3Common;
 
-public class MariaDBProvider implements DatabaseProvider<GlobalState<MariaDBOptions>, MariaDBOptions> {
+public class MariaDBProvider extends ProviderAdapter<MariaDBGlobalState, MariaDBOptions> {
 
     public static final int MAX_EXPRESSION_DEPTH = 3;
     private final Randomly r = new Randomly();
     private String databaseName;
+
+    public MariaDBProvider() {
+        super(MariaDBGlobalState.class, MariaDBOptions.class);
+    }
 
     enum Action {
         ANALYZE_TABLE, //
@@ -48,7 +52,7 @@ public class MariaDBProvider implements DatabaseProvider<GlobalState<MariaDBOpti
     }
 
     @Override
-    public void generateAndTestDatabase(GlobalState<MariaDBOptions> globalState) throws SQLException {
+    public void generateAndTestDatabase(MariaDBGlobalState globalState) throws SQLException {
         this.databaseName = globalState.getDatabaseName();
         MainOptions options = globalState.getOptions();
         Connection con = globalState.getConnection();
@@ -150,68 +154,6 @@ public class MariaDBProvider implements DatabaseProvider<GlobalState<MariaDBOpti
                 case SET:
                     query = MariaDBSetGenerator.set(r, options);
                     break;
-                // case SET_VARIABLE:
-                // query = MariaDBSetGenerator.set(r, options);
-                // break;
-                // case REPAIR:
-                // query = MariaDBRepair.repair(newSchema.getDatabaseTablesRandomSubsetNotEmpty());
-                // break;
-                // case OPTIMIZE:
-                // query = MariaDBOptimize.optimize(newSchema.getDatabaseTablesRandomSubsetNotEmpty());
-                // break;
-                // case CHECKSUM:
-                // query = MariaDBChecksum.checksum(newSchema.getDatabaseTablesRandomSubsetNotEmpty());
-                // break;
-                // case CHECK_TABLE:
-                // query = MariaDBCheckTable.check(newSchema.getDatabaseTablesRandomSubsetNotEmpty());
-                // break;
-                // case ANALYZE_TABLE:
-                // query = MariaDBAnalyzeTable.analyze(newSchema.getDatabaseTablesRandomSubsetNotEmpty(), r);
-                // break;
-                // case FLUSH:
-                // query = MariaDBFlush.create(newSchema.getDatabaseTablesRandomSubsetNotEmpty());
-                // break;
-                // case RESET:
-                // query = MariaDBReset.create();
-                // break;
-                // case CREATE_INDEX:
-                // query = createIndexGenerator.create();
-                // break;
-                // case ALTER_TABLE:
-                // query = MariaDBAlterTable.create(newSchema, r);
-                // break;
-                // case SELECT_INFO:
-                // query = new QueryAdapter(
-                // "select TABLE_NAME, ENGINE from information_schema.TABLES where table_schema = '"
-                // + databaseName + "'");
-                // break;
-                // case TRUNCATE_TABLE:
-                // query = new QueryAdapter("TRUNCATE TABLE " + newSchema.getRandomTable().getName()) {
-                // @Override
-                // public void execute(Connection con) throws SQLException {
-                // try {
-                // super.execute(con);
-                // } catch (SQLException e) {
-                // if (e.getMessage().contains("doesn't have this option")) {
-                // return;
-                // } else {
-                // throw e;
-                // }
-                // }
-                // }
-                //
-                // };
-                // break;
-                // case CREATE_TABLE:
-                // String tableName = SQLite3Common.createTableName(newSchema.getDatabaseTables().size());
-                // query = MariaDBTableGenerator.generate(tableName, r, newSchema);
-                // break;
-                // case DELETE:
-                // query = MariaDBDeleteGenerator.delete(newSchema.getRandomTable(), r);
-                // break;
-                // case DROP_INDEX:
-                // query = MariaDBDropIndex.generate(newSchema.getRandomTable());
-                // break;
                 default:
                     throw new AssertionError(nextAction);
                 }
@@ -226,7 +168,6 @@ public class MariaDBProvider implements DatabaseProvider<GlobalState<MariaDBOpti
                 manager.execute(query);
                 if (query.couldAffectSchema()) {
                     newSchema = MariaDBSchema.fromConnection(con, databaseName);
-                    // createIndexGenerator.setNewSchema(newSchema);
                 }
             } catch (Throwable t) {
                 System.err.println(query.getQueryString());
@@ -234,15 +175,9 @@ public class MariaDBProvider implements DatabaseProvider<GlobalState<MariaDBOpti
             }
             total--;
         }
-        // for (MariaDBTable t : newSchema.getDatabaseTables()) {
-        // if (!ensureTableHasRows(con, t, r)) {
-        // return;
-        // }
-        // }
-        //
         newSchema = MariaDBSchema.fromConnection(con, databaseName);
         //
-        MariaDBNoRECOracle queryGenerator = new MariaDBNoRECOracle(newSchema, r, con, (MariaDBStateToReproduce) state);
+        MariaDBNoRECOracle queryGenerator = new MariaDBNoRECOracle(newSchema, r, con, state);
         for (int i = 0; i < options.getNrQueries(); i++) {
             try {
                 queryGenerator.generateAndCheck();
@@ -254,23 +189,28 @@ public class MariaDBProvider implements DatabaseProvider<GlobalState<MariaDBOpti
 
     }
 
+    public static class MariaDBGlobalState extends GlobalState<MariaDBOptions> {
+
+    }
+
     @Override
-    public Connection createDatabase(GlobalState<?> globalState) throws SQLException {
-        globalState.getState().statements.add(new QueryAdapter("DROP DATABASE IF EXISTS " + databaseName));
-        globalState.getState().statements.add(new QueryAdapter("CREATE DATABASE " + databaseName));
-        globalState.getState().statements.add(new QueryAdapter("USE " + databaseName));
+    public Connection createDatabase(MariaDBGlobalState globalState) throws SQLException {
+        globalState.getState().statements
+                .add(new QueryAdapter("DROP DATABASE IF EXISTS " + globalState.getDatabaseName()));
+        globalState.getState().statements.add(new QueryAdapter("CREATE DATABASE " + globalState.getDatabaseName()));
+        globalState.getState().statements.add(new QueryAdapter("USE " + globalState.getDatabaseName()));
         // /?serverTimezone=UTC&useSSL=false&allowPublicKeyRetrieval=true
         String url = "jdbc:mariadb://localhost:3306";
         Connection con = DriverManager.getConnection(url, globalState.getOptions().getUserName(),
                 globalState.getOptions().getPassword());
         try (Statement s = con.createStatement()) {
-            s.execute("DROP DATABASE IF EXISTS " + databaseName);
+            s.execute("DROP DATABASE IF EXISTS " + globalState.getDatabaseName());
         }
         try (Statement s = con.createStatement()) {
-            s.execute("CREATE DATABASE " + databaseName);
+            s.execute("CREATE DATABASE " + globalState.getDatabaseName());
         }
         try (Statement s = con.createStatement()) {
-            s.execute("USE " + databaseName);
+            s.execute("USE " + globalState.getDatabaseName());
         }
         return con;
     }
@@ -283,21 +223,6 @@ public class MariaDBProvider implements DatabaseProvider<GlobalState<MariaDBOpti
     @Override
     public String toString() {
         return String.format("MariaDBProvider [database: %s]", databaseName);
-    }
-
-    @Override
-    public StateToReproduce getStateToReproduce(String databaseName) {
-        return new MariaDBStateToReproduce(databaseName);
-    }
-
-    @Override
-    public GlobalState<MariaDBOptions> generateGlobalState() {
-        return new GlobalState<MariaDBOptions>();
-    }
-
-    @Override
-    public MariaDBOptions getCommand() {
-        return new MariaDBOptions();
     }
 
 }

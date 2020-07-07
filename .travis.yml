@@ -1,7 +1,9 @@
+dist: bionic
 language: java
-jdk: oraclejdk11
+
 script:
-- mvn test
+- cd src && python check_names.py && cd ..
+
 cache:
   directories:
   - target/lib
@@ -12,3 +14,84 @@ after_failure:
 branches:
   only:
   - master
+
+matrix:
+  include:
+    - name: MariaDB
+      jdk : oraclejdk11
+      before_install:
+      - sudo apt-key adv --recv-keys --keyserver hkp://keyserver.ubuntu.com:80 0xF1656F24C74CD1D8
+      - sudo add-apt-repository 'deb [arch=amd64,arm64,ppc64el] http://ftp.utexas.edu/mariadb/repo/10.3/ubuntu bionic main'
+      - sudo apt update
+      - sudo apt install mariadb-server
+      - sudo mysql -e "CREATE USER 'sqlancer'@'localhost' IDENTIFIED BY 'sqlancer'; GRANT ALL PRIVILEGES ON * . * TO 'sqlancer'@'localhost';"
+      - MARIADB_AVAILABLE=true mvn -Dtest=TestMariaDB test
+    - name : MySQL
+      jdk : oraclejdk11
+      script:
+        - sudo apt-get update && sudo apt-get install libssl-dev libmecab2 libjson-perl mecab-ipadic-utf8
+        - sudo apt-get remove mysql-* && wget https://dev.mysql.com/get/Downloads/MySQL-8.0/mysql-server_8.0.20-1ubuntu18.04_amd64.deb-bundle.tar && tar -xvf mysql-server_8.0.20-1ubuntu18.04_amd64.deb-bundle.tar && yes | sudo dpkg -i *.deb
+        - sudo mysql -e "CREATE USER 'sqlancer'@'localhost' IDENTIFIED BY 'sqlancer'; GRANT ALL PRIVILEGES ON * . * TO 'sqlancer'@'localhost';"
+        - MYSQL_AVAILABLE=true mvn -Dtest=TestMySQL test
+    - name: CockroachDB
+      jdk : oraclejdk11
+      before_install:
+      - wget -qO- https://binaries.cockroachdb.com/cockroach-v20.1.2.linux-amd64.tgz | tar  xvz
+      - cd cockroach-v20.1.2.linux-amd64/ && ./cockroach start-single-node --insecure &
+      - sleep 15
+      - cd cockroach-v20.1.2.linux-amd64/ && ./cockroach sql --insecure -e "CREATE USER sqlancer; GRANT admin to sqlancer" && cd ..
+      script:
+      - COCKROACHDB_AVAILABLE=true mvn -Dtest=TestCockroachDB test
+    - name: TiDB
+      jdk : oraclejdk11
+      services:
+      - docker
+      before_install:
+      - docker pull pingcap/tidb:latest
+      - docker run --name tidb-server -d -p 4000:4000 pingcap/tidb:latest
+      - sleep 15
+      - sudo mysql -h 127.0.0.1 -P 4000 -u root -D test -e "CREATE USER 'sqlancer'@'%' IDENTIFIED WITH mysql_native_password BY 'sqlancer'; GRANT ALL PRIVILEGES ON *.* TO 'sqlancer'@'%' WITH GRANT OPTION; FLUSH PRIVILEGES;"
+      script:
+        - TIDB_AVAILABLE=true mvn -Dtest=TestTiDB test
+    - name: SQLite3
+      jdk : oraclejdk11
+      script:
+        - mvn -Dtest=TestSQLite3 test
+    - name: DuckDB
+      jdk : oraclejdk11
+      script: 
+        - mvn -Dtest=TestDuckDB test
+    - name: DuckDB (Java 8)
+      jdk : openjdk8
+      script:
+        - mvn -Dtest=TestDuckDB test
+    - name: DuckDB (java 13)
+      jdk : openjdk13
+      script:
+        - mvn -Dtest=TestDuckDB test
+    - name: Misc
+      jdk : oraclejdk11
+      script:
+        - mvn '-Dtest=!sqlancer.dbms.**' test
+    - name: PostgreSQL
+      jdk : oraclejdk11
+      before_install:
+      - sudo apt-get update
+      - sudo apt-get --yes remove postgresql\*
+      - sudo apt-get install -y postgresql-12 postgresql-client-12
+      - sudo sed -i 's/port = 5433/port = 5432/' /etc/postgresql/12/main/postgresql.conf
+      - sudo cp /etc/postgresql/{10,12}/main/pg_hba.conf
+      - sudo service postgresql restart 12  
+      addons:
+        postgresql: "12.3"
+      env:
+        global:
+          - PGPORT=5432
+      services:
+        - postgresql
+      before_script:
+        - sudo apt-get install locales
+        - psql -c "CREATE ROLE sqlancer SUPERUSER LOGIN CREATEDB PASSWORD 'sqlancer';" -U postgres
+        - createdb test -U postgres
+      script:
+        - POSTGRES_AVAILABLE=true mvn -Dtest=TestPostgres test

@@ -6,8 +6,6 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.io.Writer;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -28,7 +26,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import com.beust.jcommander.JCommander;
 import com.beust.jcommander.JCommander.Builder;
 
-import sqlancer.clickhouse.ClickhouseProvider;
+import sqlancer.clickhouse.ClickHouseProvider;
 import sqlancer.cockroachdb.CockroachDBProvider;
 import sqlancer.duckdb.DuckDBProvider;
 import sqlancer.mariadb.MariaDBProvider;
@@ -62,8 +60,8 @@ public final class Main {
         private FileWriter logFileWriter;
         public FileWriter currentFileWriter;
         private static final List<String> INITIALIZED_PROVIDER_NAMES = new ArrayList<>();
-        private boolean logEachSelect = true;
-        private DatabaseProvider<?, ?> provider;
+        private final boolean logEachSelect;
+        private final DatabaseProvider<?, ?> provider;
 
         private static final class AlsoWriteToConsoleFileWriter extends FileWriter {
 
@@ -211,6 +209,7 @@ public final class Main {
             sb.append("-- Time: " + dateFormat.format(date) + "\n");
             sb.append("-- Database: " + state.getDatabaseName() + "\n");
             sb.append("-- Database version: " + state.getDatabaseVersion() + "\n");
+            sb.append("-- seed value: " + state.getSeedValue() + "\n");
             for (Query s : state.getStatements()) {
                 if (s.getQueryString().endsWith(";")) {
                     sb.append(s.getQueryString());
@@ -273,10 +272,111 @@ public final class Main {
         System.exit(executeMain(args));
     }
 
+    public static class DBMSExecutor<G extends GlobalState<O>, O> {
+
+        private final DatabaseProvider<G, O> provider;
+        private final MainOptions options;
+        private final O command;
+        private final String databaseName;
+        private final long seed;
+        private StateLogger logger;
+        private StateToReproduce stateToRepro;
+
+        public DBMSExecutor(DatabaseProvider<G, O> provider, MainOptions options, O dbmsSpecificOptions,
+                String databaseName, long seed) {
+            this.provider = provider;
+            this.options = options;
+            this.databaseName = databaseName;
+            this.seed = seed;
+            this.command = dbmsSpecificOptions;
+        }
+
+        private G createGlobalState() {
+            try {
+                return provider.getGlobalStateClass().getDeclaredConstructor().newInstance();
+            } catch (Exception e) {
+                throw new AssertionError(e);
+            }
+        }
+
+        public O getCommand() {
+            return command;
+        }
+
+        public void run() throws SQLException {
+            G state = createGlobalState();
+            stateToRepro = provider.getStateToReproduce(databaseName);
+            stateToRepro.seedValue = seed;
+            state.setState(stateToRepro);
+            logger = new StateLogger(databaseName, provider, options);
+            Randomly r = new Randomly(seed);
+            state.setRandomly(r);
+            state.setDatabaseName(databaseName);
+            state.setMainOptions(options);
+            state.setDmbsSpecificOptions(command);
+            try (Connection con = provider.createDatabase(state)) {
+                QueryManager manager = new QueryManager(con, stateToRepro);
+                try {
+                    java.sql.DatabaseMetaData meta = con.getMetaData();
+                    stateToRepro.databaseVersion = meta.getDatabaseProductVersion();
+                } catch (SQLFeatureNotSupportedException e) {
+                    // ignore
+                }
+                state.setConnection(con);
+                state.setStateLogger(logger);
+                state.setManager(manager);
+                provider.generateAndTestDatabase(state);
+            }
+        }
+
+        public StateLogger getLogger() {
+            return logger;
+        }
+
+        public StateToReproduce getStateToReproduce() {
+            return stateToRepro;
+        }
+    }
+
+    public static class DBMSExecutorFactory<G extends GlobalState<O>, O> {
+
+        private final DatabaseProvider<G, O> provider;
+        private final MainOptions options;
+        private final O command;
+
+        public DBMSExecutorFactory(DatabaseProvider<G, O> provider, MainOptions options) {
+            this.provider = provider;
+            this.options = options;
+            this.command = createCommand();
+        }
+
+        private O createCommand() {
+            try {
+                return provider.getOptionClass().getDeclaredConstructor().newInstance();
+            } catch (Exception e) {
+                throw new AssertionError(e);
+            }
+        }
+
+        public O getCommand() {
+            return command;
+        }
+
+        @SuppressWarnings("unchecked")
+        public DBMSExecutor<G, O> getDBMSExecutor(String databaseName, long seed) {
+            try {
+                return new DBMSExecutor<G, O>(provider.getClass().getDeclaredConstructor().newInstance(), options,
+                        command, databaseName, seed);
+            } catch (Exception e) {
+                throw new AssertionError(e);
+            }
+        }
+
+    }
+
     public static int executeMain(String... args) throws AssertionError {
         List<DatabaseProvider<?, ?>> providers = getDBMSProviders();
-        Map<String, DatabaseProvider<?, ?>> nameToProvider = new HashMap<>();
-        Map<String, Object> nameToOptions = new HashMap<>();
+        Map<String, DBMSExecutorFactory<?, ?>> nameToProvider = new HashMap<>();
         MainOptions options = new MainOptions();
         Builder commandBuilder = JCommander.newBuilder().addObject(options);
         for (DatabaseProvider<?, ?> provider : providers) {
@@ -284,13 +384,9 @@ public final class Main {
             if (!name.toLowerCase().equals(name)) {
                 throw new AssertionError(name + " should be in lowercase!");
             }
-            Object command = provider.getCommand();
-            if (command == null) {
-                throw new IllegalStateException();
-            }
-            nameToProvider.put(name, provider);
-            nameToOptions.put(name, command);
-            commandBuilder = commandBuilder.addCommand(name, command);
+            DBMSExecutorFactory<?, ?> executorFactory = new DBMSExecutorFactory<>(provider, options);
+            commandBuilder = commandBuilder.addCommand(name, executorFactory.getCommand());
+            nameToProvider.put(name, executorFactory);
         }
         JCommander jc = commandBuilder.programName("SQLancer").build();
         jc.parse(args);
@@ -304,99 +400,52 @@ public final class Main {
             startProgressMonitor();
         }
 
-        ExecutorService executor = Executors.newFixedThreadPool(options.getNumberConcurrentThreads());
+        ExecutorService execService = Executors.newFixedThreadPool(options.getNumberConcurrentThreads());
+        DBMSExecutorFactory<?, ?> executorFactory = nameToProvider.get(jc.getParsedCommand());
         for (int i = 0; i < options.getTotalNumberTries(); i++) {
             final String databaseName = "database" + i;
             final long seed;
             if (options.getRandomSeed() == -1) {
-                seed = -1;
+                seed = System.currentTimeMillis() + i;
             } else {
                 seed = options.getRandomSeed() + i;
             }
 
-            executor.execute(new Runnable() {
-
-                StateToReproduce stateToRepro;
-                StateLogger logger;
-                DatabaseProvider<?, ?> provider;
+            execService.execute(new Runnable() {
 
                 @Override
                 public void run() {
+                    Thread.currentThread().setName(databaseName);
                     runThread(databaseName);
                 }
 
                 private void runThread(final String databaseName) {
-                    Thread.currentThread().setName(databaseName);
                     while (true) {
-                        // create a new instance of the provider in case it has a global state
+                        DBMSExecutor<?, ?> executor = executorFactory.getDBMSExecutor(databaseName, seed);
                         try {
-                            provider = nameToProvider.get(jc.getParsedCommand()).getClass().getDeclaredConstructor()
-                                    .newInstance();
-                        } catch (Exception e) {
-                            throw new AssertionError(e);
-                        }
-                        GlobalState<?> state = provider.generateGlobalState();
-                        stateToRepro = provider.getStateToReproduce(databaseName);
-                        state.setState(stateToRepro);
-                        logger = new StateLogger(databaseName, provider, options);
-                        Randomly r;
-                        if (seed == -1) {
-                            r = new Randomly();
-                        } else {
-                            r = new Randomly(seed);
-                        }
-                        state.setRandomly(r);
-                        state.setDatabaseName(databaseName);
-                        state.setMainOptions(options);
-                        Object dmbsSpecificOptions = nameToOptions.get(jc.getParsedCommand());
-                        state.setDmbsSpecificOptions(dmbsSpecificOptions);
-                        try (Connection con = provider.createDatabase(state)) {
-                            QueryManager manager = new QueryManager(con, stateToRepro);
-                            try {
-                                java.sql.DatabaseMetaData meta = con.getMetaData();
-                                stateToRepro.databaseVersion = meta.getDatabaseProductVersion();
-                            } catch (SQLFeatureNotSupportedException e) {
-                                // ignore
-                            }
-                            state.setConnection(con);
-                            state.setStateLogger(logger);
-                            state.setManager(manager);
-                            Method method = provider.getClass().getMethod("generateAndTestDatabase", state.getClass());
-                            method.setAccessible(true);
-                            method.invoke(provider, state);
+                            executor.run();
                         } catch (IgnoreMeException e) {
                             continue;
-                        } catch (InvocationTargetException e) {
-                            if (e.getCause() instanceof IgnoreMeException) {
-                                continue;
-                            } else {
-                                e.getCause().printStackTrace();
-                                stateToRepro.exception = e.getCause().getMessage();
-                                logger.logFileWriter = null;
-                                logger.logException(e.getCause(), stateToRepro);
-                                threadsShutdown++;
-                                break;
-                            }
                         } catch (Throwable reduce) {
                             reduce.printStackTrace();
-                            stateToRepro.exception = reduce.getMessage();
-                            logger.logFileWriter = null;
-                            logger.logException(reduce, stateToRepro);
+                            executor.getStateToReproduce().exception = reduce.getMessage();
+                            executor.getLogger().logFileWriter = null;
+                            executor.getLogger().logException(reduce, executor.getStateToReproduce());
                             threadsShutdown++;
                             break;
                         } finally {
                             try {
                                 if (options.logEachSelect()) {
-                                    if (logger.currentFileWriter != null) {
-                                        logger.currentFileWriter.close();
+                                    if (executor.getLogger().currentFileWriter != null) {
+                                        executor.getLogger().currentFileWriter.close();
                                     }
-                                    logger.currentFileWriter = null;
+                                    executor.getLogger().currentFileWriter = null;
                                 }
                             } catch (IOException e) {
                                 e.printStackTrace();
                             }
                             if (threadsShutdown == options.getTotalNumberTries()) {
-                                executor.shutdown();
+                                execService.shutdown();
                             }
                         }
                     }
@@ -405,9 +454,9 @@ public final class Main {
         }
         try {
             if (options.getTimeoutSeconds() == -1) {
-                executor.awaitTermination(Long.MAX_VALUE, TimeUnit.DAYS);
+                execService.awaitTermination(Long.MAX_VALUE, TimeUnit.DAYS);
             } else {
-                executor.awaitTermination(options.getTimeoutSeconds(), TimeUnit.SECONDS);
+                execService.awaitTermination(options.getTimeoutSeconds(), TimeUnit.SECONDS);
             }
         } catch (InterruptedException e) {
             e.printStackTrace();
@@ -423,7 +472,7 @@ public final class Main {
         providers.add(new MariaDBProvider());
         providers.add(new TiDBProvider());
         providers.add(new PostgresProvider());
-        providers.add(new ClickhouseProvider());
+        providers.add(new ClickHouseProvider());
         providers.add(new DuckDBProvider());
         return providers;
     }
@@ -433,7 +482,7 @@ public final class Main {
         scheduler.scheduleAtFixedRate(new Runnable() {
 
             private long timeMillis = System.currentTimeMillis();
-            private long lastNrQueries = 0;
+            private long lastNrQueries;
             private long lastNrDbs;
 
             {
