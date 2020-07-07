@@ -83,10 +83,6 @@ public final class PostgresCommon {
         errors.add("unrecognized node type: 127");
         // TODO: SQLancer error
         errors.add("not a foreign key or check constraint");
-        // TODO: SQLancer error
-        errors.add("is outside the valid range for parameter \"jit_inline_above_cost\"");
-        //TODO: SQLancer error
-        errors.add("is outside the valid range for parameter \"jit_optimize_above_cost\"");
         errors.add("cannot perform an INSERT without a partition column value");
         // TODO: remove once fixed
         errors.add("failed to find conversion function from unknown to text");
