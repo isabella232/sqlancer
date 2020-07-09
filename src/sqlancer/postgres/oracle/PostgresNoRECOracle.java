@@ -125,7 +125,7 @@ public class PostgresNoRECOracle implements TestOracle {
         Query q = new QueryAdapter(secondQueryString, errors);
         ResultSet rs;
         try {
-            rs = q.executeAndGet(con);
+            rs = q.executeAndGet(globalState);
         } catch (Exception e) {
             throw new AssertionError(secondQueryString, e);
         }

@@ -408,6 +408,7 @@ public final class PostgresProvider extends ProviderAdapter<PostgresGlobalState,
     
     @Override
     public Connection createDatabase(PostgresGlobalState globalState) throws SQLException {
+<<<<<<< HEAD
         // lock database creation process per thread
         synchronized(PostgresProvider.class) {
             String databaseName = globalState.getDatabaseName();
@@ -487,22 +488,11 @@ public final class PostgresProvider extends ProviderAdapter<PostgresGlobalState,
                     s.execute("SELECT * from master_add_node('" + w.get_name() + "', " + w.get_port() + ");");
                 }
             }
-            List<String> statements = Arrays.asList(
-                    // "CREATE EXTENSION IF NOT EXISTS btree_gin;",
-                    // "CREATE EXTENSION IF NOT EXISTS btree_gist;", // TODO: undefined symbol: elog_start
-                    "CREATE EXTENSION IF NOT EXISTS pg_prewarm;", "SET max_parallel_workers_per_gather=" + ((PostgresGlobalState)globalState).getDmbsSpecificOptions().max_parallel_workers_per_gather);
-            for (String s : statements) {
-                QueryAdapter query = new QueryAdapter(s);
-                globalState.getState().statements.add(query);
-                query.execute(con);
-            }
-            // new QueryAdapter("set jit_above_cost = 0; set jit_inline_above_cost = 0; set jit_optimize_above_cost =
-            // 0;").execute(con);
             return con;
         }
     }
 
-    private String getCreateDatabaseCommand(String databaseName, Connection con) {
+    private String getCreateDatabaseCommand(String databaseName, Connection con, GlobalState<?> state) {
         StringBuilder sb = new StringBuilder();
         sb.append("CREATE DATABASE " + databaseName + " ");
         if (Randomly.getBoolean()) {
