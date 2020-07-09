@@ -4,3 +4,4 @@ target/
 .project
 .checkstyle
 *.DS_Store
+*.orig

@@ -232,7 +232,7 @@ public final class PostgresProvider extends ProviderAdapter<PostgresGlobalState,
             // TODO: find a way to protect from SQL injection without '' around string input
             query = new QueryAdapter("ALTER TABLE " + tableName + " ALTER COLUMN " + columnToDistribute.getName() + " SET NOT NULL;");
             globalState.getState().statements.add(query);
-            query.execute(con);
+            query.execute(globalState);
         }
     }
 
@@ -320,7 +320,7 @@ public final class PostgresProvider extends ProviderAdapter<PostgresGlobalState,
 
         QueryAdapter query = new QueryAdapter("SELECT proname, provolatile FROM pg_proc;");
         globalState.getState().statements.add(query);
-        ResultSet rs = query.executeAndGet(con);
+        ResultSet rs = query.executeAndGet(globalState);
         while (rs.next()) {
             String functionName = rs.getString("proname");
             Character functionType = rs.getString("provolatile").charAt(0);
@@ -408,7 +408,6 @@ public final class PostgresProvider extends ProviderAdapter<PostgresGlobalState,
     
     @Override
     public Connection createDatabase(PostgresGlobalState globalState) throws SQLException {
-<<<<<<< HEAD
         // lock database creation process per thread
         synchronized(PostgresProvider.class) {
             String databaseName = globalState.getDatabaseName();
@@ -422,7 +421,7 @@ public final class PostgresProvider extends ProviderAdapter<PostgresGlobalState,
             Connection con = DriverManager.getConnection(urlCoordinatorInitDB, username, password);
             globalState.getState().statements.add(new QueryAdapter("SELECT * FROM master_get_active_worker_nodes()"));
             globalState.getState().statements.add(new QueryAdapter("DROP DATABASE IF EXISTS " + databaseName));
-            String createDatabaseCommand = getCreateDatabaseCommand(databaseName, con);
+            String createDatabaseCommand = getCreateDatabaseCommand(databaseName, con, globalState);
             globalState.getState().statements.add(new QueryAdapter(createDatabaseCommand));
             List<WorkerNode> workerNodes = new ArrayList<>();
             // get info about all servers hosting worker nodes
@@ -450,7 +449,7 @@ public final class PostgresProvider extends ProviderAdapter<PostgresGlobalState,
                 globalState.getState().statements.add(new QueryAdapter("\\c " + entryDatabaseName));
                 con = DriverManager.getConnection(urlWorkerInitDB, username, password);
                 globalState.getState().statements.add(new QueryAdapter("DROP DATABASE IF EXISTS " + databaseName));
-                createDatabaseCommand = getCreateDatabaseCommand(databaseName, con);
+                // createDatabaseCommand = getCreateDatabaseCommand(databaseName, con);
                 globalState.getState().statements.add(new QueryAdapter(createDatabaseCommand));
                 try (Statement s = con.createStatement()) {
                     s.execute("DROP DATABASE IF EXISTS " + databaseName);
@@ -495,7 +494,7 @@ public final class PostgresProvider extends ProviderAdapter<PostgresGlobalState,
     private String getCreateDatabaseCommand(String databaseName, Connection con, GlobalState<?> state) {
         StringBuilder sb = new StringBuilder();
         sb.append("CREATE DATABASE " + databaseName + " ");
-        if (Randomly.getBoolean()) {
+        if (Randomly.getBoolean() && ((PostgresOptions) state.getDmbsSpecificOptions()).testCollations) {
             if (Randomly.getBoolean()) {
                 sb.append("WITH ENCODING '");
                 sb.append(Randomly.fromOptions("utf8"));
